@@ -1,10 +1,20 @@
 spring:
+  datasource:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://localhost:3306/ni_ai_code_king
+      username: root
+      password: 12345678
   application:
     name: ni-ai-code-king-backend
 server:
   port: 8123
   servlet:
     context-path: /api
+
+  # mysql
+
+
+
 
 # springdoc-openapi
 springdoc:
