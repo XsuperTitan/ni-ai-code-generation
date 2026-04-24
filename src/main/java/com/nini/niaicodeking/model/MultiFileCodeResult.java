@@ -1,4 +1,4 @@
-package com.nini.niaicodeking.ai.model;
+package com.nini.niaicodeking.model;
 
 import dev.langchain4j.model.output.structured.Description;
 import lombok.Data;

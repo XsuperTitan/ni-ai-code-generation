@@ -37,3 +37,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# 屏蔽根目录下的 tmp 目录及其所有内容
+/tmp/

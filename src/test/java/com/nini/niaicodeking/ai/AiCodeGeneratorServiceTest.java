@@ -1,13 +1,11 @@
 package com.nini.niaicodeking.ai;
 
-import com.nini.niaicodeking.ai.model.HtmlCodeResult;
-import com.nini.niaicodeking.ai.model.MultiFileCodeResult;
+import com.nini.niaicodeking.model.HtmlCodeResult;
+import com.nini.niaicodeking.model.MultiFileCodeResult;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 class AiCodeGeneratorServiceTest {
