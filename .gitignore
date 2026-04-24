@@ -13,6 +13,12 @@ target/
 .springBeans
 .sts4-cache
 
+# 敏感配置文件
+application-local.properties
+application-local.yml
+application-dev.properties
+application-dev.yml
+
 ### IntelliJ IDEA ###
 .idea
 *.iws
