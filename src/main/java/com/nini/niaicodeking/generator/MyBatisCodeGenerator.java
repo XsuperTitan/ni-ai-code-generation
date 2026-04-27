@@ -16,12 +16,12 @@ import java.util.Map;
 public class MyBatisCodeGenerator {
 
     // Change Table Name
-    private static final String [] TABLE_NAMES = {"user"};
+    private static final String [] TABLE_NAMES = {"app"};
 
     public static void main(String[] args) {
 
         //获取数据源文件
-        Dict dict = YamlUtil.loadByPath("application.yml");
+        Dict dict = YamlUtil.loadByPath("application-local.yml");
         Map<String, Object> dataSourceConfig = dict.getByPath("spring.datasource");
         String url = String.valueOf(dataSourceConfig.get("url"));
         String username = String.valueOf(dataSourceConfig.get("username"));
