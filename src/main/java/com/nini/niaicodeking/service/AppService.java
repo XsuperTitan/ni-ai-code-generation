@@ -5,7 +5,9 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.nini.niaicodeking.model.dto.app.AppQueryRequest;
 import com.nini.niaicodeking.model.entity.App;
+import com.nini.niaicodeking.model.entity.User;
 import com.nini.niaicodeking.model.vo.AppVO;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -29,14 +31,6 @@ public interface AppService extends IService<App> {
 
 
     /**
-     * 校验应用参数
-     *
-     * @param app 应用
-     * @param add 是否为创建场景
-     */
-    void validApp(App app, boolean add);
-
-    /**
      * 获取应用视图对象
      *
      * @param app 应用实体
@@ -45,10 +39,13 @@ public interface AppService extends IService<App> {
     AppVO getAppVO(App app);
 
     /**
-     * 分页获取应用视图对象
+     * 聊天生成代码
      *
-     * @param appPage 应用分页
-     * @return 视图分页
+     * @param appId 应用id
+     * @param message 消息
+     * @param loginUser 登录用户
+     *
      */
-    Page<AppVO> getAppVOPage(Page<App> appPage);
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
 }

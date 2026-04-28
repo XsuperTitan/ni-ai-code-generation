@@ -6,18 +6,23 @@ import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
+import com.nini.niaicodeking.core.AiCodeGeneratorFacade;
 import com.nini.niaicodeking.exception.BusinessException;
 import com.nini.niaicodeking.exception.ErrorCode;
+import com.nini.niaicodeking.exception.ThrowUtils;
 import com.nini.niaicodeking.model.dto.app.AppQueryRequest;
 import com.nini.niaicodeking.model.entity.App;
 import com.nini.niaicodeking.model.entity.User;
 import com.nini.niaicodeking.mapper.AppMapper;
+import com.nini.niaicodeking.model.enums.CodeGenTypeEnum;
 import com.nini.niaicodeking.model.vo.AppVO;
 import com.nini.niaicodeking.model.vo.UserVO;
 import com.nini.niaicodeking.service.AppService;
 import com.nini.niaicodeking.service.UserService;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +40,31 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private UserService userService;
+    @Autowired
+    private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+
+    @Override
+    public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 错误");
+        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "提示词Prompt不能为空");
+        // 2. 查询应用信息
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验，仅本人可以和自己的应用对话
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
+        }
+        // 4. 获取应用的代码生成类型P
+        String codeGenType = app.getCodeGenType();
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用代码生成类型错误");
+        }
+        // 5. 调用AI生成代码
+        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+
+    }
 
     @Override
     public AppVO getAppVO(App app) {
@@ -98,41 +128,5 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
             appVO.setUser(userVO);
             return appVO;
         }).collect(Collectors.toList());
-    }
-
-
-    @Override
-    public void validApp(App app, boolean add) {
-        if (app == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用参数为空");
-        }
-        String appName = app.getAppName();
-        String initPrompt = app.getInitPrompt();
-        if (add) {
-            if (StrUtil.isBlank(initPrompt)) {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "初始化提示词不能为空");
-            }
-        }
-        if (StrUtil.isNotBlank(appName) && appName.length() > 256) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用名称过长");
-        }
-    }
-
-
-
-    @Override
-    public Page<AppVO> getAppVOPage(Page<App> appPage) {
-        if (appPage == null) {
-            return new Page<>();
-        }
-        Page<AppVO> appVOPage = new Page<>(appPage.getPageNumber(), appPage.getPageSize(), appPage.getTotalRow());
-        List<App> appList = appPage.getRecords();
-        if (CollUtil.isEmpty(appList)) {
-            appVOPage.setRecords(new ArrayList<>());
-            return appVOPage;
-        }
-        List<AppVO> appVOList = appList.stream().map(this::getAppVO).collect(Collectors.toList());
-        appVOPage.setRecords(appVOList);
-        return appVOPage;
     }
 }
