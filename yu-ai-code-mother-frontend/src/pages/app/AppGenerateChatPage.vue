@@ -134,6 +134,45 @@ const parseSSEChunk = (raw: string) => {
   }
 }
 
+/**
+ * 将流式分片规范化为可展示文本：
+ * - 兼容 {"d":"..."} 这类增量 JSON
+ * - 兼容 OpenAI 风格 {"choices":[{"delta":{"content":"..."}}]}
+ * - 解析失败时回退原始文本，避免丢失输出
+ */
+const normalizeChunkText = (rawData: string) => {
+  const data = rawData.trim()
+  if (!data) {
+    return ''
+  }
+  if (data === '[DONE]') {
+    return ''
+  }
+  try {
+    const parsed = JSON.parse(data)
+    if (typeof parsed === 'string') {
+      return parsed
+    }
+    if (typeof parsed?.d === 'string') {
+      return parsed.d
+    }
+    if (typeof parsed?.content === 'string') {
+      return parsed.content
+    }
+    const deltaContent = parsed?.choices?.[0]?.delta?.content
+    if (typeof deltaContent === 'string') {
+      return deltaContent
+    }
+    const messageContent = parsed?.choices?.[0]?.message?.content
+    if (typeof messageContent === 'string') {
+      return messageContent
+    }
+  } catch {
+    // 非 JSON 片段，按文本回退
+  }
+  return data
+}
+
 const streamChat = async (content: string) => {
   streaming.value = true
   hasStreamDone.value = false
@@ -167,7 +206,7 @@ const streamChat = async (content: string) => {
           hasStreamDone.value = true
           continue
         }
-        appendAssistantChunk(data)
+        appendAssistantChunk(normalizeChunkText(data))
       }
     }
     if (buffer.trim()) {
@@ -175,7 +214,7 @@ const streamChat = async (content: string) => {
       if (eventName === 'done') {
         hasStreamDone.value = true
       } else {
-        appendAssistantChunk(data)
+        appendAssistantChunk(normalizeChunkText(data))
       }
     }
     await fetchAppDetail()
