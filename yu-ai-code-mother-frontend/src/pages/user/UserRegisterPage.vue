@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { reactive } from 'vue'
-import { register } from '@/api/userController.ts'
+import { userRegister } from '@/api/userController.ts'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { RuleObject } from 'ant-design-vue/es/form'
@@ -25,8 +25,8 @@ async function validateCheckPassword(rule: RuleObject, value: string) {
  * 提交表单
  * @param values
  */
-const handleSubmit = async (values: any) => {
-  const res = await register(formState)
+const handleSubmit = async () => {
+  const res = await userRegister(formState)
   // 注册成功
   if (res.data.code === 0 && res.data.data) {
     message.success('注册成功')

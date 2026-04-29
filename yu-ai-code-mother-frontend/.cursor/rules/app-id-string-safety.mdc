@@ -1,0 +1,24 @@
+---
+description: Keep appId as string to avoid Long precision loss
+globs: src/**/*.{ts,vue}
+alwaysApply: false
+---
+
+# App ID String Safety
+
+- Treat `appId` / app route `id` as `string` in frontend code.
+- Do not convert app IDs to `Number` (`Number(...)`, unary `+`, `parseInt`) before API calls.
+- When calling app APIs, pass ID as `string` (or `string | number` typed union), preferring string.
+- Reason: backend uses Long IDs; JS number precision can corrupt IDs and cause "data not found".
+
+## Examples
+
+```ts
+// bad
+const appId = Number(route.params.id)
+await getAppVoById({ id: appId })
+
+// good
+const appId = String(route.params.id || '')
+await getAppVoById({ id: appId })
+```
