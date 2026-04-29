@@ -3,6 +3,7 @@ package com.nini.niaicodeking.core;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nini.niaicodeking.constant.AppConstant;
 import com.nini.niaicodeking.model.HtmlCodeResult;
 import com.nini.niaicodeking.model.MultiFileCodeResult;
 import com.nini.niaicodeking.model.enums.CodeGenTypeEnum;
@@ -14,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 public class CodeFileSaver {
 
     // 文件保存根目录
-    private static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
+    private static final String FILE_SAVE_ROOT_DIR = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
     /**
      * 保存 HtmlCodeResult
