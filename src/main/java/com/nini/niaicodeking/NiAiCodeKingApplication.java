@@ -1,5 +1,6 @@
 package com.nini.niaicodeking;
 
+import dev.langchain4j.community.store.embedding.redis.spring.RedisEmbeddingStoreAutoConfiguration;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -8,7 +9,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Spring Boot应用程序的主启动类
  * 使用@SpringBootApplication注解标记这是一个Spring Boot应用
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = {RedisEmbeddingStoreAutoConfiguration.class})
 @MapperScan("com.nini.niaicodeking.mapper")
 public class NiAiCodeKingApplication {
 
