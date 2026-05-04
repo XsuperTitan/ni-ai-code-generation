@@ -3,6 +3,9 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { addApp, listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController'
+import HomeHeroSection from '@/components/home/HomeHeroSection.vue'
+import AppCardSection from '@/components/home/AppCardSection.vue'
+import { joinUrl } from '@/utils/url'
 
 const router = useRouter()
 const creating = ref(false)
@@ -26,10 +29,12 @@ const goodKeyword = ref('')
 const goodApps = ref<API.AppVO[]>([])
 const goodTotal = ref(0)
 const appDeployBaseUrl = import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost'
-
-const joinUrl = (baseUrl: string, path: string) => {
-  return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
-}
+const quickPrompts = [
+  '创建一个适合独立开发者的个人博客网站，包含首页、文章列表、文章详情、关于我和联系方式模块，整体风格简洁高级，支持展示技术标签、精选文章和个人项目经历。',
+  '生成一个现代化企业官网，用于展示一家人工智能解决方案公司，包含首页横幅、核心服务、客户案例、团队介绍和预约咨询表单，视觉风格要科技感强、可信赖。',
+  '创建一个在线课程销售落地页，面向想学习前端开发的用户，包含课程亮点、适合人群、讲师介绍、课程大纲、学员评价和立即报名按钮，整体转化导向明确。',
+  '生成一个摄影作品集网站，适合自由摄影师展示商业拍摄案例，包含大图首页、作品分类、项目详情、服务报价和联系预约入口，风格要高级、留白充足、图片突出。',
+]
 
 const doCreateApp = async () => {
   if (!initPrompt.value.trim()) {
@@ -121,190 +126,59 @@ onMounted(() => {
 
 <template>
   <div id="homePage">
-    <a-typography-title :level="2">一句话，生成你想要的网站应用</a-typography-title>
-    <a-typography-paragraph type="secondary">
-      输入你的需求，AI 会帮你生成可预览、可部署的网站应用
-    </a-typography-paragraph>
+    <HomeHeroSection v-model="initPrompt" :creating="creating" :quick-prompts="quickPrompts" @create="doCreateApp" />
 
-    <a-card class="prompt-card">
-      <a-textarea
-        v-model:value="initPrompt"
-        placeholder="例如：帮我生成一个酒店预订官网，包含首页、房型列表和在线预约表单"
-        :rows="4"
-      />
-      <div class="prompt-action">
-        <a-button type="primary" :loading="creating" @click="doCreateApp">开始创建应用</a-button>
-      </div>
-    </a-card>
+    <AppCardSection
+      v-model:keyword="myKeyword"
+      v-model:current="myParams.pageNum"
+      v-model:page-size="myParams.pageSize"
+      title="我的应用"
+      :apps="myApps"
+      :total="myTotal"
+      empty-description="暂无应用"
+      user-name-fallback="我"
+      avatar-fallback="我"
+      @search="doSearchMy"
+      @page-change="fetchMyApps"
+      @view-chat="viewChat"
+      @view-work="viewWork"
+    />
 
-    <a-card title="我的应用" class="list-card">
-      <div class="search-row">
-        <a-input
-          v-model:value="myKeyword"
-          allow-clear
-          placeholder="按应用名称搜索"
-          @pressEnter="doSearchMy"
-        />
-        <a-button type="primary" @click="doSearchMy">搜索</a-button>
-      </div>
-      <a-list :grid="{ gutter: 16, column: 3 }" :data-source="myApps">
-        <template #renderItem="{ item }">
-          <a-list-item>
-            <a-card hoverable>
-              <template #cover>
-                <img v-if="item.cover" :src="item.cover" alt="应用封面" class="app-cover" />
-                <div v-else class="app-cover app-cover-placeholder">暂无封面</div>
-              </template>
-              <div class="app-info">
-                <a-avatar :src="item.user?.userAvatar">
-                  {{ item.user?.userName?.slice(0, 1) || '我' }}
-                </a-avatar>
-                <div class="app-info-content">
-                  <div class="app-title">{{ item.appName || `应用 #${item.id}` }}</div>
-                  <div class="muted">{{ item.user?.userName || '我' }}</div>
-                </div>
-              </div>
-              <a-space class="card-actions">
-                <a-button type="link" @click="viewChat(item.id)">查看对话</a-button>
-                <a-button v-if="item.deployKey" type="link" @click="viewWork(item.deployKey)">
-                  查看作品
-                </a-button>
-              </a-space>
-            </a-card>
-          </a-list-item>
-        </template>
-      </a-list>
-      <a-empty v-if="myApps.length === 0" description="暂无应用" />
-      <a-pagination
-        class="pager"
-        v-model:current="myParams.pageNum"
-        v-model:pageSize="myParams.pageSize"
-        :total="myTotal"
-        :page-size-options="['6', '12', '20']"
-        show-size-changer
-        @change="fetchMyApps"
-      />
-    </a-card>
-
-    <a-card title="精选应用" class="list-card">
-      <div class="search-row">
-        <a-input
-          v-model:value="goodKeyword"
-          allow-clear
-          placeholder="按应用名称搜索"
-          @pressEnter="doSearchGood"
-        />
-        <a-button type="primary" @click="doSearchGood">搜索</a-button>
-      </div>
-      <a-list :grid="{ gutter: 16, column: 3 }" :data-source="goodApps">
-        <template #renderItem="{ item }">
-          <a-list-item>
-            <a-card hoverable>
-              <template #cover>
-                <img v-if="item.cover" :src="item.cover" alt="应用封面" class="app-cover" />
-                <div v-else class="app-cover app-cover-placeholder">暂无封面</div>
-              </template>
-              <div class="app-info">
-                <a-avatar :src="item.user?.userAvatar">
-                  {{ item.user?.userName?.slice(0, 1) || '匿' }}
-                </a-avatar>
-                <div class="app-info-content">
-                  <div class="app-title">{{ item.appName || `应用 #${item.id}` }}</div>
-                  <div class="muted">{{ item.user?.userName || '无名' }}</div>
-                </div>
-              </div>
-              <a-space class="card-actions">
-                <a-button type="link" @click="viewChat(item.id)">查看对话</a-button>
-                <a-button v-if="item.deployKey" type="link" @click="viewWork(item.deployKey)">
-                  查看作品
-                </a-button>
-              </a-space>
-            </a-card>
-          </a-list-item>
-        </template>
-      </a-list>
-      <a-empty v-if="goodApps.length === 0" description="暂无精选应用" />
-      <a-pagination
-        class="pager"
-        v-model:current="goodParams.pageNum"
-        v-model:pageSize="goodParams.pageSize"
-        :total="goodTotal"
-        :page-size-options="['6', '12', '20']"
-        show-size-changer
-        @change="fetchGoodApps"
-      />
-    </a-card>
+    <AppCardSection
+      v-model:keyword="goodKeyword"
+      v-model:current="goodParams.pageNum"
+      v-model:page-size="goodParams.pageSize"
+      title="精选应用"
+      :apps="goodApps"
+      :total="goodTotal"
+      empty-description="暂无精选应用"
+      user-name-fallback="无名"
+      avatar-fallback="匿"
+      @search="doSearchGood"
+      @page-change="fetchGoodApps"
+      @view-chat="viewChat"
+      @view-work="viewWork"
+    />
   </div>
 </template>
 
 <style scoped>
 #homePage {
+  min-height: calc(100vh - 56px);
+  padding: 56px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
+  background:
+    radial-gradient(circle at 16% 10%, rgba(118, 255, 221, 0.5), transparent 32%),
+    radial-gradient(circle at 82% 12%, rgba(88, 196, 255, 0.38), transparent 30%),
+    radial-gradient(circle at 50% 78%, rgba(213, 255, 236, 0.72), transparent 36%),
+    linear-gradient(135deg, #061613 0%, #0b3332 42%, #eafff7 100%);
 }
 
-.prompt-card,
-.list-card {
-  border-radius: 12px;
-}
-
-.prompt-action {
-  margin-top: 12px;
-  text-align: right;
-}
-
-.search-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.pager {
-  margin-top: 12px;
-  text-align: right;
-}
-
-.muted {
-  color: #888;
-}
-
-.app-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.app-info-content {
-  min-width: 0;
-}
-
-.app-title {
-  overflow: hidden;
-  color: #222;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-cover {
-  width: 100%;
-  height: 160px;
-  object-fit: cover;
-}
-
-.app-cover-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #999;
-  background: #f5f5f5;
-  font-size: 14px;
-}
-
-.card-actions {
-  margin-top: 8px;
+@media (max-width: 768px) {
+  #homePage {
+    padding: 36px 16px;
+  }
 }
 </style>

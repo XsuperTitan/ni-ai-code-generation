@@ -151,7 +151,3 @@ onMounted(() => {
 })
 </script>
 
-<style>
-#userManagePage {
-}
-</style>

@@ -18,14 +18,17 @@ import GlobalFooter from '@/components/GlobalFooter.vue'
 
 <style scoped>
 .basic-layout {
-  background: none;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(138, 255, 229, 0.42), transparent 30%),
+    radial-gradient(circle at 86% 14%, rgba(112, 202, 255, 0.32), transparent 28%),
+    linear-gradient(135deg, #071813 0%, #0d2f31 48%, #e9fff7 100%);
 }
 
 .main-content {
-  max-width: 1200px;
   width: 100%;
-  padding: 24px;
-  background: white;
-  margin: 16px auto 56px;
+  padding: 0;
+  background: transparent;
+  margin: 0 auto 56px;
 }
 </style>
