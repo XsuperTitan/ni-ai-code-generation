@@ -110,7 +110,7 @@ declare namespace API {
   }
 
   type DeleteRequest = {
-    id?: number
+    id?: string | number
   }
 
   type getAppVOByIdByAdminParams = {

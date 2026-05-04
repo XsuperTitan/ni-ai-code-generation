@@ -25,6 +25,11 @@ const goodParams = reactive<API.AppQueryRequest>({
 const goodKeyword = ref('')
 const goodApps = ref<API.AppVO[]>([])
 const goodTotal = ref(0)
+const appDeployBaseUrl = import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost'
+
+const joinUrl = (baseUrl: string, path: string) => {
+  return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
 
 const doCreateApp = async () => {
   if (!initPrompt.value.trim()) {
@@ -81,6 +86,33 @@ const doSearchGood = () => {
   fetchGoodApps()
 }
 
+const viewChat = (appId?: string | number) => {
+  if (!appId) {
+    return
+  }
+  router.push({
+    path: `/app/chat/${appId}`,
+    query: {
+      view: '1',
+    },
+  })
+}
+
+const getWorkUrl = (deployKey?: string) => {
+  if (!deployKey) {
+    return ''
+  }
+  return joinUrl(appDeployBaseUrl, deployKey)
+}
+
+const viewWork = (deployKey?: string) => {
+  const workUrl = getWorkUrl(deployKey)
+  if (!workUrl) {
+    return
+  }
+  window.open(workUrl, '_blank')
+}
+
 onMounted(() => {
   fetchMyApps()
   fetchGoodApps()
@@ -118,12 +150,26 @@ onMounted(() => {
       <a-list :grid="{ gutter: 16, column: 3 }" :data-source="myApps">
         <template #renderItem="{ item }">
           <a-list-item>
-            <a-card hoverable @click="router.push(`/app/chat/${item.id}`)">
-              <a-card-meta :title="item.appName || `应用 #${item.id}`">
-                <template #description>
-                  <div class="muted">创建者：{{ item.user?.userName || '我' }}</div>
-                </template>
-              </a-card-meta>
+            <a-card hoverable>
+              <template #cover>
+                <img v-if="item.cover" :src="item.cover" alt="应用封面" class="app-cover" />
+                <div v-else class="app-cover app-cover-placeholder">暂无封面</div>
+              </template>
+              <div class="app-info">
+                <a-avatar :src="item.user?.userAvatar">
+                  {{ item.user?.userName?.slice(0, 1) || '我' }}
+                </a-avatar>
+                <div class="app-info-content">
+                  <div class="app-title">{{ item.appName || `应用 #${item.id}` }}</div>
+                  <div class="muted">{{ item.user?.userName || '我' }}</div>
+                </div>
+              </div>
+              <a-space class="card-actions">
+                <a-button type="link" @click="viewChat(item.id)">查看对话</a-button>
+                <a-button v-if="item.deployKey" type="link" @click="viewWork(item.deployKey)">
+                  查看作品
+                </a-button>
+              </a-space>
             </a-card>
           </a-list-item>
         </template>
@@ -153,12 +199,26 @@ onMounted(() => {
       <a-list :grid="{ gutter: 16, column: 3 }" :data-source="goodApps">
         <template #renderItem="{ item }">
           <a-list-item>
-            <a-card hoverable @click="router.push(`/app/chat/${item.id}`)">
-              <a-card-meta :title="item.appName || `应用 #${item.id}`">
-                <template #description>
-                  <div class="muted">作者：{{ item.user?.userName || '-' }}</div>
-                </template>
-              </a-card-meta>
+            <a-card hoverable>
+              <template #cover>
+                <img v-if="item.cover" :src="item.cover" alt="应用封面" class="app-cover" />
+                <div v-else class="app-cover app-cover-placeholder">暂无封面</div>
+              </template>
+              <div class="app-info">
+                <a-avatar :src="item.user?.userAvatar">
+                  {{ item.user?.userName?.slice(0, 1) || '匿' }}
+                </a-avatar>
+                <div class="app-info-content">
+                  <div class="app-title">{{ item.appName || `应用 #${item.id}` }}</div>
+                  <div class="muted">{{ item.user?.userName || '无名' }}</div>
+                </div>
+              </div>
+              <a-space class="card-actions">
+                <a-button type="link" @click="viewChat(item.id)">查看对话</a-button>
+                <a-button v-if="item.deployKey" type="link" @click="viewWork(item.deployKey)">
+                  查看作品
+                </a-button>
+              </a-space>
             </a-card>
           </a-list-item>
         </template>
@@ -208,5 +268,43 @@ onMounted(() => {
 
 .muted {
   color: #888;
+}
+
+.app-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-info-content {
+  min-width: 0;
+}
+
+.app-title {
+  overflow: hidden;
+  color: #222;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-cover {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+}
+
+.app-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  background: #f5f5f5;
+  font-size: 14px;
+}
+
+.card-actions {
+  margin-top: 8px;
 }
 </style>

@@ -4,14 +4,39 @@
       <div class="page-header">
         <div class="app-name">{{ appDetail?.appName || `应用 #${appId}` }}</div>
         <a-space>
+          <a-button @click="showDetailModal = true">应用详情</a-button>
           <a-button :loading="deployLoading" @click="doDeploy">部署</a-button>
-          <a-button @click="router.push(`/app/edit/${appId}`)">编辑信息</a-button>
         </a-space>
       </div>
       <a-typography-link v-if="deployUrl" :href="deployUrl" target="_blank">
         部署地址：{{ deployUrl }}
       </a-typography-link>
     </a-card>
+
+    <a-modal v-model:open="showDetailModal" title="应用详情" :footer="null" width="520">
+      <div class="detail-section-title">应用基础信息</div>
+      <div class="detail-row">
+        <span class="detail-label">创建者：</span>
+        <a-space>
+          <a-avatar :src="appDetail?.user?.userAvatar">
+            {{ appDetail?.user?.userName?.slice(0, 1) || '匿' }}
+          </a-avatar>
+          <span>{{ appDetail?.user?.userName || '无名' }}</span>
+        </a-space>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">创建时间：</span>
+        <span>{{ formatCreateTime }}</span>
+      </div>
+
+      <div v-if="canManageApp" class="detail-actions">
+        <div class="detail-section-title">操作栏</div>
+        <a-space>
+          <a-button type="primary" @click="goToEdit">修改</a-button>
+          <a-button danger :loading="deleteLoading" @click="doDeleteApp">删除</a-button>
+        </a-space>
+      </div>
+    </a-modal>
 
     <div class="content">
       <a-card title="应用生成对话" class="chat-panel">
@@ -21,17 +46,30 @@
             :key="`${item.role}-${index}`"
             :class="['message-item', item.role === 'user' ? 'user' : 'assistant']"
           >
-            <div class="message-bubble">{{ item.content }}</div>
+            <a-avatar v-if="item.role === 'assistant'" :src="aiAvatar" class="ai-avatar" />
+            <div
+              v-if="item.role === 'assistant'"
+              class="message-bubble markdown-body"
+              v-html="renderMarkdown(item.content)"
+            />
+            <div v-else class="message-bubble">{{ item.content }}</div>
           </div>
           <a-spin v-if="streaming" />
         </div>
         <div class="input-row">
-          <a-textarea
-            v-model:value="inputMessage"
-            placeholder="继续描述你要修改或新增的功能..."
-            :auto-size="{ minRows: 2, maxRows: 4 }"
-          />
-          <a-button type="primary" :loading="streaming" @click="sendMessage">发送</a-button>
+          <a-tooltip :title="canSendMessage ? null : noPermissionTip">
+            <div class="input-wrapper">
+              <a-textarea
+                v-model:value="inputMessage"
+                placeholder="继续描述你要修改或新增的功能..."
+                :auto-size="{ minRows: 2, maxRows: 4 }"
+                :disabled="!canSendMessage || streaming"
+              />
+            </div>
+          </a-tooltip>
+          <a-button type="primary" :loading="streaming" :disabled="!canSendMessage" @click="sendMessage">
+            发送
+          </a-button>
         </div>
       </a-card>
 
@@ -47,7 +85,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { deployApp, getAppVoById } from '@/api/appController'
+import dayjs from 'dayjs'
+import MarkdownIt from 'markdown-it'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github.css'
+import { deleteApp, deleteAppByAdmin, deployApp, getAppVoById } from '@/api/appController'
+import { useLoginUserStore } from '@/stores/loginUser'
+import aiAvatar from '@/assets/aiAvatar.png'
 
 type ChatRole = 'user' | 'assistant'
 
@@ -58,24 +102,81 @@ type ChatMessage = {
 
 const route = useRoute()
 const router = useRouter()
+const loginUserStore = useLoginUserStore()
 
 const appId = String(route.params.id || '')
 const appDetail = ref<API.AppVO>()
 const inputMessage = ref('')
 const deployLoading = ref(false)
-const deployUrl = ref('')
+const deleteLoading = ref(false)
 const streaming = ref(false)
 const messages = ref<ChatMessage[]>([])
+const showDetailModal = ref(false)
 let streamAbortController: AbortController | null = null
+const noPermissionTip = '无法在别人的作品下对话哦~'
+const appDeployBaseUrl = import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost'
+const appPreviewBaseUrl =
+  import.meta.env.VITE_APP_PREVIEW_BASE_URL || 'http://localhost:8123/api/static'
+
+const joinUrl = (baseUrl: string, path: string) => {
+  return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
+
+const markdown = new MarkdownIt({
+  html: true,
+  linkify: true,
+  breaks: true,
+  highlight(code, language) {
+    const validLanguage = language && hljs.getLanguage(language)
+    if (validLanguage) {
+      return hljs.highlight(code, { language }).value
+    }
+    return hljs.highlightAuto(code, ['html', 'css', 'javascript']).value
+  },
+})
 
 const previewUrl = computed(() => {
   if (!appDetail.value?.codeGenType || !appId || !hasStreamDone.value) {
     return ''
   }
-  return `http://localhost:8123/api/static/${appDetail.value.codeGenType}_${appId}/`
+  return joinUrl(appPreviewBaseUrl, `${appDetail.value.codeGenType}_${appId}/`)
+})
+
+const deployUrl = computed(() => {
+  if (!appDetail.value?.deployKey) {
+    return ''
+  }
+  return joinUrl(appDeployBaseUrl, appDetail.value.deployKey)
 })
 
 const hasStreamDone = ref(false)
+
+const isViewMode = computed(() => route.query.view !== undefined)
+
+const canSendMessage = computed(() => {
+  return isOwner.value
+})
+
+const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
+
+const isOwner = computed(() => {
+  const loginUserId = loginUserStore.loginUser.id
+  const ownerId = appDetail.value?.userId
+  if (!loginUserId || ownerId === undefined || ownerId === null) {
+    return false
+  }
+  return String(loginUserId) === String(ownerId)
+})
+
+const canManageApp = computed(() => isOwner.value || isAdmin.value)
+
+const formatCreateTime = computed(() => {
+  const createTime = appDetail.value?.createTime
+  if (!createTime) {
+    return '-'
+  }
+  return dayjs(createTime).format('YYYY-MM-DD HH:mm:ss')
+})
 
 const fetchAppDetail = async () => {
   const res = await getAppVoById({ id: appId })
@@ -87,18 +188,47 @@ const fetchAppDetail = async () => {
   return false
 }
 
+const renderMarkdown = (content: string) => {
+  return markdown.render(content)
+}
+
 const doDeploy = async () => {
   deployLoading.value = true
   try {
     const res = await deployApp({ appId })
-    if (res.data.code === 0 && res.data.data) {
-      deployUrl.value = res.data.data
+    if (res.data.code === 0) {
+      await fetchAppDetail()
       message.success('部署成功')
       return
     }
     message.error('部署失败，' + res.data.message)
   } finally {
     deployLoading.value = false
+  }
+}
+
+const goToEdit = () => {
+  showDetailModal.value = false
+  router.push(`/app/edit/${appId}`)
+}
+
+const doDeleteApp = async () => {
+  if (!canManageApp.value) {
+    return
+  }
+  deleteLoading.value = true
+  try {
+    const deleteBody = { id: appId } as unknown as API.DeleteRequest
+    const res = isAdmin.value ? await deleteAppByAdmin(deleteBody) : await deleteApp(deleteBody)
+    if (res.data.code === 0) {
+      message.success('删除成功')
+      showDetailModal.value = false
+      await router.push('/')
+      return
+    }
+    message.error('删除失败，' + res.data.message)
+  } finally {
+    deleteLoading.value = false
   }
 }
 
@@ -228,6 +358,10 @@ const streamChat = async (content: string) => {
 }
 
 const sendMessage = async () => {
+  if (!canSendMessage.value) {
+    message.warning(noPermissionTip)
+    return
+  }
   const content = inputMessage.value.trim()
   if (!content) {
     return
@@ -241,6 +375,9 @@ const sendMessage = async () => {
 }
 
 onMounted(async () => {
+  if (!loginUserStore.loginUser.id) {
+    await loginUserStore.fetchLoginUser()
+  }
   if (!appId) {
     message.error('应用 id 无效')
     router.push('/')
@@ -248,6 +385,9 @@ onMounted(async () => {
   }
   const ok = await fetchAppDetail()
   if (!ok) {
+    return
+  }
+  if (isViewMode.value) {
     return
   }
   const initPrompt = (route.query.initPrompt as string) || appDetail.value?.initPrompt || ''
@@ -281,15 +421,43 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.detail-section-title {
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.detail-label {
+  width: 80px;
+  color: #666;
+}
+
+.detail-actions {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
 .content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
 }
 
 .chat-panel,
 .preview-panel {
+  min-width: 0;
   min-height: 620px;
+}
+
+.chat-panel :deep(.ant-card-body),
+.preview-panel :deep(.ant-card-body) {
+  min-width: 0;
 }
 
 .message-list {
@@ -303,6 +471,10 @@ onBeforeUnmount(() => {
 
 .message-item {
   display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
   margin-bottom: 10px;
 }
 
@@ -310,17 +482,23 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
+.ai-avatar {
+  flex: 0 0 auto;
+}
+
 .message-bubble {
   max-width: 80%;
+  min-width: 0;
   padding: 8px 12px;
   border-radius: 8px;
-  white-space: pre-wrap;
+  overflow-x: auto;
   word-break: break-word;
 }
 
 .message-item.user .message-bubble {
   background: #1677ff;
   color: #fff;
+  white-space: pre-wrap;
 }
 
 .message-item.assistant .message-bubble {
@@ -328,11 +506,62 @@ onBeforeUnmount(() => {
   border: 1px solid #e8e8e8;
 }
 
+.markdown-body {
+  line-height: 1.7;
+  white-space: normal;
+}
+
+.markdown-body :deep(p),
+.markdown-body :deep(ul),
+.markdown-body :deep(ol),
+.markdown-body :deep(pre),
+.markdown-body :deep(blockquote) {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.markdown-body :deep(p:last-child),
+.markdown-body :deep(ul:last-child),
+.markdown-body :deep(ol:last-child),
+.markdown-body :deep(pre:last-child),
+.markdown-body :deep(blockquote:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(pre) {
+  max-width: 100%;
+  padding: 12px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: #f6f8fa;
+}
+
+.markdown-body :deep(code) {
+  font-family:
+    ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.markdown-body :deep(:not(pre) > code) {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #f6f8fa;
+}
+
+.markdown-body :deep(blockquote) {
+  padding-left: 12px;
+  color: #666;
+  border-left: 4px solid #d9d9d9;
+}
+
 .input-row {
   margin-top: 12px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+}
+
+.input-wrapper {
+  width: 100%;
 }
 
 .preview-iframe {
