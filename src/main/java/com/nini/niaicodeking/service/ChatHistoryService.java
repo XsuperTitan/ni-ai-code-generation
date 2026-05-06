@@ -6,6 +6,7 @@ import com.mybatisflex.core.service.IService;
 import com.nini.niaicodeking.model.dto.chatHistory.ChatHistoryQueryRequest;
 import com.nini.niaicodeking.model.entity.ChatHistory;
 import com.nini.niaicodeking.model.entity.User;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 
 import java.time.LocalDateTime;
 
@@ -15,6 +16,8 @@ import java.time.LocalDateTime;
  * @author <a herf="https://github.com/XsuperTitan">Blume Ni</a>
  */
 public interface ChatHistoryService extends IService<ChatHistory> {
+
+    int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory, int maxCount);
 
     /**
      * 添加聊天消息。
