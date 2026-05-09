@@ -1,7 +1,9 @@
 package com.nini.niaicodeking.core;
 
+import cn.hutool.json.JSONUtil;
 import com.nini.niaicodeking.ai.AiCodeGeneratorService;
 import com.nini.niaicodeking.ai.AiCodeGeneratorServiceFactory;
+import com.nini.niaicodeking.ai.model.message.AiResponseMessage;
 import com.nini.niaicodeking.core.parser.CodeParserExecutor;
 import com.nini.niaicodeking.core.saver.CodeFileSaverExecutor;
 import com.nini.niaicodeking.exception.BusinessException;
@@ -9,6 +11,8 @@ import com.nini.niaicodeking.exception.ErrorCode;
 import com.nini.niaicodeking.model.HtmlCodeResult;
 import com.nini.niaicodeking.model.MultiFileCodeResult;
 import com.nini.niaicodeking.model.enums.CodeGenTypeEnum;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.service.TokenStream;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -69,16 +73,21 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成类型为空");
         }
+        // 根据 appId 获取对应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appID, codeGenTypeEnum);
         return switch (codeGenTypeEnum) {
             case HTML -> {
-                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appID);
                 Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
                 yield processCodeStream(codeStream, CodeGenTypeEnum.HTML, appID);
             }
             case MULTI_FILE -> {
-                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appID);
                 Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
                 yield processCodeStream(codeStream, CodeGenTypeEnum.MULTI_FILE, appID);
+            }
+            case VUE_PROJECT -> {
+                Flux<String> codeStream = aiCodeGeneratorService.generateVueProjectCodeStream(appID, userMessage);
+                // VUE_PROJECT 使用工具调用直接写入文件，这里无需再做多文件解析和保存
+                yield codeStream;
             }
             default -> {
                 String errorMessage = "不支持的生成类型：" + codeGenTypeEnum.getValue();
@@ -86,6 +95,8 @@ public class AiCodeGeneratorFacade {
             }
         };
     }
+
+
 
 
 //    /**
@@ -174,6 +185,31 @@ public class AiCodeGeneratorFacade {
             }
         });
     }
+
+    /**
+     * 将 TokenStream 转换为 Flux<String>，并传递工具调用信息
+     *
+     * @param tokenStream TokenStream 对象
+     * @return Flux<String> 流式响应
+     */
+    private Flux<String> processTokenStream(TokenStream tokenStream) {
+        return Flux.create(sink -> {
+            tokenStream.onPartialResponse((String partialResponse) -> {
+                        AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
+                        sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+                    })
+                    .onCompleteResponse((ChatResponse response) -> {
+                        sink.complete();
+                    })
+                    .onError((Throwable error) -> {
+                        error.printStackTrace();
+                        sink.error(error);
+                    })
+                    .start();
+        });
+    }
+
+
 
 
 
