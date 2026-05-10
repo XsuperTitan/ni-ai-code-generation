@@ -22,8 +22,31 @@ const markdown = new MarkdownIt({
   },
 })
 
+const defaultFenceRenderer =
+  markdown.renderer.rules.fence ??
+  ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
+
+markdown.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  const language = (token.info || '').trim().split(/\s+/)[0] || 'text'
+  const renderedFence = defaultFenceRenderer(tokens, idx, options, env, self)
+  return `<div class="code-block"><div class="code-lang">${language}</div>${renderedFence}</div>`
+}
+
+const decorateAssistantContent = (content: string) => {
+  if (!content) {
+    return ''
+  }
+  return content
+    .replace(
+      /^\[(工具调用|工具执行结果|工具执行|选择工具|tool call|tool execution)\]\s*(.+)$/gim,
+      '<div class="tool-call-line">[$1] $2</div>',
+    )
+    .replace(/\n{3,}/g, '\n\n')
+}
+
 const renderMarkdown = (content: string) => {
-  return markdown.render(content)
+  return markdown.render(decorateAssistantContent(content))
 }
 </script>
 
@@ -101,10 +124,40 @@ const renderMarkdown = (content: string) => {
 
 .markdown-body :deep(pre) {
   max-width: 100%;
+  margin: 0;
   padding: 12px;
   overflow-x: auto;
+  border-radius: 0 0 8px 8px;
+  background: #f6f8fa !important;
+}
+
+.markdown-body :deep(.code-block) {
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  background: #f6f8fa;
+  background: #f8fafc;
+}
+
+.markdown-body :deep(.code-lang) {
+  padding: 6px 12px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: lowercase;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.markdown-body :deep(.tool-call-line) {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  color: #0f172a;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
 }
 
 .markdown-body :deep(code) {

@@ -212,6 +212,71 @@ const appendAssistantChunk = (chunk: string) => {
   }
 }
 
+const hasToolStatusContent = (content: string) => {
+  return /\[(选择工具|工具调用|工具执行结果)\]/.test(content)
+}
+
+const inferCodeLangByFilePath = (filePath: string) => {
+  const lower = (filePath || '').toLowerCase()
+  if (lower.endsWith('.vue')) return 'vue'
+  if (lower.endsWith('.json')) return 'json'
+  if (lower.endsWith('.ts')) return 'typescript'
+  if (lower.endsWith('.js')) return 'javascript'
+  if (lower.endsWith('.css')) return 'css'
+  if (lower.endsWith('.html')) return 'html'
+  if (lower.endsWith('.md')) return 'markdown'
+  return 'text'
+}
+
+const fetchGeneratedFileContent = async (relativePath: string) => {
+  if (!appDetail.value?.codeGenType || !appId) {
+    return null
+  }
+  const projectBase = joinUrl(appPreviewBaseUrl, `${appDetail.value.codeGenType}_${appId}/`)
+  const fileUrl = joinUrl(projectBase, relativePath)
+  try {
+    const res = await fetch(fileUrl, {
+      method: 'GET',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      return null
+    }
+    const text = await res.text()
+    if (!text.trim()) {
+      return null
+    }
+    return text
+  } catch {
+    return null
+  }
+}
+
+const appendFrontendToolFallback = async () => {
+  const lastMessage = messages.value[messages.value.length - 1]
+  if (!lastMessage || lastMessage.role !== 'assistant') {
+    return
+  }
+  if (hasToolStatusContent(lastMessage.content)) {
+    return
+  }
+  const candidateFiles = ['package.json', 'src/App.vue', 'src/main.js']
+  const sections: string[] = []
+  for (const relativePath of candidateFiles) {
+    const content = await fetchGeneratedFileContent(relativePath)
+    if (!content) {
+      continue
+    }
+    const lang = inferCodeLangByFilePath(relativePath)
+    sections.push(
+      `[选择工具] 写入文件\n\n[工具调用] 写入文件 ${relativePath}\n\`\`\`${lang}\n${content}\n\`\`\``,
+    )
+  }
+  if (sections.length > 0) {
+    appendAssistantChunk(`\n${sections.join('\n\n')}\n`)
+  }
+}
+
 const parseSSEChunk = (raw: string) => {
   const lines = raw.split('\n')
   let eventName = ''
@@ -243,27 +308,75 @@ const normalizeChunkText = (rawData: string) => {
   if (data === '[DONE]') {
     return ''
   }
-  try {
-    const parsed = JSON.parse(data)
-    if (typeof parsed === 'string') {
-      return parsed
+
+  const tryParseJson = (value: string) => {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return null
     }
-    if (typeof parsed?.d === 'string') {
-      return parsed.d
+  }
+
+  const stringifyJson = (value: unknown) => {
+    try {
+      return JSON.stringify(value, null, 2)
+    } catch {
+      return String(value ?? '')
     }
-    if (typeof parsed?.content === 'string') {
-      return parsed.content
+  }
+
+  const parsed = tryParseJson(data)
+  if (!parsed) {
+    return data
+  }
+
+  if (typeof parsed === 'string') {
+    return parsed
+  }
+
+  // 后端 SSE 外层包装：{"d":"..."}
+  if (typeof parsed?.d === 'string') {
+    const nested = tryParseJson(parsed.d)
+
+    // 1) 结构化 AI 文本
+    if (nested?.type === 'ai_response' && typeof nested.data === 'string') {
+      return nested.data
     }
-    const deltaContent = parsed?.choices?.[0]?.delta?.content
-    if (typeof deltaContent === 'string') {
-      return deltaContent
+
+    // 2) 工具调用请求 -> 转成状态 + 代码块
+    if (nested?.type === 'tool_request') {
+      const argsObj = tryParseJson(nested.arguments) ?? {}
+      const relativeFilePath = String((argsObj as Record<string, unknown>)?.relativeFilePath ?? '').trim()
+      const contentText = String((argsObj as Record<string, unknown>)?.content ?? '')
+      const toolName = nested.name === 'writeFile' ? '写入文件' : nested.name || 'unknown'
+      if (relativeFilePath && contentText) {
+        const lang = inferCodeLangByFilePath(relativeFilePath)
+        return `\n[选择工具] ${toolName}\n\n[工具调用] ${toolName} ${relativeFilePath}\n\`\`\`${lang}\n${contentText}\n\`\`\`\n`
+      }
+      return `\n[选择工具] ${toolName}\n\n[工具调用] ${toolName}\n\`\`\`json\n${stringifyJson(argsObj)}\n\`\`\`\n`
     }
-    const messageContent = parsed?.choices?.[0]?.message?.content
-    if (typeof messageContent === 'string') {
-      return messageContent
+
+    // 3) 工具执行结果
+    if (nested?.type === 'tool_executed') {
+      const toolName = nested.name === 'writeFile' ? '写入文件' : nested.name || 'unknown'
+      const resultText = typeof nested.result === 'string' ? nested.result : stringifyJson(nested.result)
+      return `\n[工具执行结果] ${toolName}\n\`\`\`text\n${resultText}\n\`\`\`\n`
     }
-  } catch {
-    // 非 JSON 片段，按文本回退
+
+    // 非结构化嵌套，直接返回
+    return parsed.d
+  }
+
+  if (typeof parsed?.content === 'string') {
+    return parsed.content
+  }
+  const deltaContent = parsed?.choices?.[0]?.delta?.content
+  if (typeof deltaContent === 'string') {
+    return deltaContent
+  }
+  const messageContent = parsed?.choices?.[0]?.message?.content
+  if (typeof messageContent === 'string') {
+    return messageContent
   }
   return data
 }
@@ -272,6 +385,7 @@ const streamChat = async (content: string) => {
   streaming.value = true
   hasStreamDone.value = false
   streamAbortController = new AbortController()
+  let lastReceiveTime = Date.now()
   const encodedMessage = encodeURIComponent(content)
   const streamUrl = `http://localhost:8123/api/app/chat/gen/code?appId=${appId}&message=${encodedMessage}`
   try {
@@ -292,6 +406,7 @@ const streamChat = async (content: string) => {
       if (done) {
         break
       }
+      lastReceiveTime = Date.now()
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split('\n\n')
       buffer = events.pop() ?? ''
@@ -303,6 +418,11 @@ const streamChat = async (content: string) => {
         }
         appendAssistantChunk(normalizeChunkText(data))
       }
+      // 25 秒没收到新分片时自动结束等待，避免界面一直转圈
+      if (Date.now() - lastReceiveTime > 25000) {
+        message.warning('流式响应超时，已停止等待')
+        break
+      }
     }
     if (buffer.trim()) {
       const { eventName, data } = parseSSEChunk(buffer)
@@ -312,7 +432,13 @@ const streamChat = async (content: string) => {
         appendAssistantChunk(normalizeChunkText(data))
       }
     }
+    // 若后端未显式发送 done，也将本次流视为完成
+    if (!hasStreamDone.value) {
+      hasStreamDone.value = true
+    }
     await fetchAppDetail()
+    // 纯前端兜底：若没有工具状态流，则从已生成文件补全 [选择工具]/[工具调用]/代码块 展示
+    await appendFrontendToolFallback()
   } catch {
     if (!streamAbortController?.signal.aborted) {
       message.error('生成失败，请重试')
